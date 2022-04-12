@@ -15,8 +15,7 @@ from tqdm.autonotebook import trange
 
 from .config import PPOConfig
 from .env import GymEnv, GymVecEnv, env_reset
-from .models import (ActorCriticCnn, ActorCriticMlp, apply_model,
-                     select_log_prob)
+from .models import ActorCriticCnn, ActorCriticMlp, apply_model, select_log_prob
 from .trajectory import Trajectory, create_trajectory, trajectory_reshape
 
 
@@ -273,7 +272,6 @@ def train(
                 horizon,
                 gamma,
                 lam,
-                config.clip_reward,
             )
             state, losses = train_step(state, trajectory, rng2)
 
@@ -298,97 +296,3 @@ def train(
                 checkpoints.save_checkpoint(checkpoint_dir, state, frame)
 
     return state.params
-
-
-def train_from_checkpoint(
-    checkpoint: str,
-    model: Union[ActorCriticMlp, ActorCriticCnn],
-    learning_rate: Union[float, optax.Schedule],
-    train_env: GymVecEnv,
-    eval_env: GymEnv,
-    key,
-    config: PPOConfig,
-    model_dir: str,
-    log_frequency: int,
-    eval_frequency: int,
-    eval_episodes: int,
-    max_grad_norm: Optional[float] = None,
-    checkpoint_dir: Optional[str] = None,
-):
-
-    # Initialize model
-    observation = env_reset(train_env)
-    key, rng = jax.random.split(key, 2)
-    params = model.init(rng, observation)
-    state = PPOTrainState.create(
-        apply_fn=model.apply,
-        params=params,
-        lr=learning_rate,
-        config=config,
-        max_grad_norm=max_grad_norm,
-    )
-    del params
-    state = checkpoints.restore_checkpoint(checkpoint, state)
-    frame = 0
-    for f in pathlib.Path(checkpoint).iterdir():
-        if f.name.startswith("checkpoint"):
-            frame = max(frame, int(f.name.split("_")[1]))
-
-    summary_writer = tensorboard.SummaryWriter(model_dir)
-    summary_writer.hparams(config._asdict())
-
-    batch_size = config.horizon * config.n_actors
-    frames_per_train_step = batch_size
-    num_train_steps = config.total_frames // frames_per_train_step
-
-    reward = 0.0
-
-    horizon = state.config.horizon
-    gamma = state.config.gamma
-    lam = state.config.lam
-
-    try:
-        with trange(num_train_steps) as t:
-            for step in t:
-                frame += frames_per_train_step
-                t.set_description(f"frame: {step}")
-
-                key, rng1, rng2 = jax.random.split(key, 3)
-                trajectory, observation = create_trajectory(
-                    observation,
-                    state.apply_fn,
-                    state.params,
-                    train_env,
-                    rng1,
-                    horizon,
-                    gamma,
-                    lam,
-                    config.clip_reward,
-                )
-                state, losses = train_step(state, trajectory, rng2)
-
-                if step % log_frequency == 0:
-                    summary_writer.scalar("train/loss", losses["total"], frame)
-                    summary_writer.scalar("train/loss-actor", losses["actor"], frame)
-                    summary_writer.scalar("train/loss-critic", losses["critic"], frame)
-                    summary_writer.scalar(
-                        "train/loss-entropy", losses["entropy"], frame
-                    )
-                    summary_writer.scalar(
-                        "train/learning-rate", state.learning_rate(), frame
-                    )
-                    summary_writer.scalar("train/clipping", state.epsilon(), frame)
-
-                if step % eval_frequency == 0:
-                    key, rng = jax.random.split(key, 2)
-                    reward = evaluate_model(state, eval_env, eval_episodes, rng)
-                    summary_writer.scalar("train/reward", reward, frame)
-
-                t.set_description_str(f"loss: {losses['total']}, reward: {reward}")
-
-                if checkpoint_dir is not None:
-                    checkpoints.save_checkpoint(checkpoint_dir, state, frame)
-    except KeyboardInterrupt:
-        pass
-
-    return state
