@@ -58,7 +58,6 @@ def create_trajectory(
     horizon: int,
     gamma: float,
     lam: float,
-    clip_reward: bool,
 ):
 
     observation = initial_observation
@@ -82,7 +81,7 @@ def create_trajectory(
         traj_observations.append(observation)
         traj_log_probs.append(log_prob)
 
-        observation, reward, done = env_step(action, env, clip_reward)
+        observation, reward, done = env_step(action, env)
 
         traj_rewards.append(reward)
         traj_dones.append(done)
