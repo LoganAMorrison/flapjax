@@ -1,5 +1,42 @@
+from typing import Union, Tuple
+
 import gym
 import numpy as np
+import jax
+import jax.numpy as jnp
+
+GymEnv = gym.Env
+GymVecEnv = Union[gym.vector.AsyncVectorEnv, gym.vector.SyncVectorEnv]
+
+
+def env_reset(env: Union[GymEnv, GymVecEnv]):
+    """Reset environment and return jax array of observation."""
+    observation = env.reset()
+    return jnp.array(observation, dtype=jnp.float32)
+
+
+def env_step(
+    action: jnp.ndarray, env: Union[GymEnv, GymVecEnv]
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Step environment and return jax array of observation, reward and terminal status."""
+    act = np.array(jax.device_get(action), dtype=np.int32)
+
+    if not isinstance(env, gym.vector.VectorEnv):
+        observation, reward, done, _ = env.step(act[0])
+    else:
+        observation, reward, done, _ = env.step(act)
+
+    observation = np.array(observation)
+    reward = np.array(reward, dtype=np.int32)
+    done = np.array(done, dtype=np.int32)
+
+    # Make the batch dimension for non-vector environments
+    if not isinstance(env, gym.vector.VectorEnv):
+        observation = np.expand_dims(observation, 0)
+        reward = np.expand_dims(reward, 0)
+        done = np.expand_dims(done, 0)
+
+    return observation, reward, done
 
 
 class FrameSkip(gym.Wrapper):
