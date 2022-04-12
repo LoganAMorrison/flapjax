@@ -14,5 +14,5 @@ __all__ = [
 
 register(
     id="FlappyBird-v0",
-    entry_point="flappy_bird.envs:FlappyBirdEnvV1",
+    entry_point="flappy_bird.envs:FlappyBirdEnvV0",
 )
