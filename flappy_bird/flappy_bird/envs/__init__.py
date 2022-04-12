@@ -1,3 +1,3 @@
-from .v1 import FlappyBirdEnvV0
+from .v0 import FlappyBirdEnvV0
 
 __all__ = ["FlappyBirdEnvV0"]
